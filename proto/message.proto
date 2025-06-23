@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+package im.v1;
+
+option go_package = "./im/v1;imv1";
+
+import "google/protobuf/timestamp.proto";
+
+// IM服务定义
+service IMService {
+  // 双向流消息
+  rpc StreamMessages(stream MessageRequest) returns (stream MessageResponse);
+  
+  // 单向RPC方法
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc JoinRoom(JoinRoomRequest) returns (JoinRoomResponse);
+  rpc LeaveRoom(LeaveRoomRequest) returns (LeaveRoomResponse);
+  rpc GetRoomInfo(GetRoomInfoRequest) returns (GetRoomInfoResponse);
+  rpc GetAudioTranscript(TranscriptRequest) returns (TranscriptResponse);
+  rpc UploadAudio(stream UploadAudioRequest) returns (UploadAudioResponse);
+  
+  // 健康检查
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// 消息类型枚举
+enum MessageType {
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  MESSAGE_TYPE_TEXT = 1;
+  MESSAGE_TYPE_AUDIO = 2;
+  MESSAGE_TYPE_RICH_TEXT = 3;
+  MESSAGE_TYPE_SYSTEM = 4;
+  MESSAGE_TYPE_ACK = 5;
+  MESSAGE_TYPE_JOIN_ROOM = 6;
+  MESSAGE_TYPE_LEAVE_ROOM = 7;
+  MESSAGE_TYPE_HEARTBEAT = 8;
+}
+
+// 消息请求
+message MessageRequest {
+  string message_id = 1;
+  string user_id = 2;
+  string room_id = 3;
+  MessageType type = 4;
+  bytes content = 5;
+  map<string, string> metadata = 6;
+  google.protobuf.Timestamp timestamp = 7;
+}
+
+// 消息响应
+message MessageResponse {
+  string message_id = 1;
+  string from_user_id = 2;
+  string room_id = 3;
+  MessageType type = 4;
+  bytes content = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  map<string, string> metadata = 7;
+  bool ack_required = 8;
+}
+
+// 发送消息请求
+message SendMessageRequest {
+  string user_id = 1;
+  string room_id = 2;
+  MessageType type = 3;
+  bytes content = 4;
+  map<string, string> metadata = 5;
+  bool ack_required = 6;
+}
+
+// 发送消息响应
+message SendMessageResponse {
+  string message_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  ResponseStatus status = 3;
+}
+
+// 加入房间请求
+message JoinRoomRequest {
+  string user_id = 1;
+  string room_id = 2;
+  map<string, string> metadata = 3;
+}
+
+// 加入房间响应
+message JoinRoomResponse {
+  ResponseStatus status = 1;
+  RoomInfo room_info = 2;
+  repeated string online_users = 3;
+}
+
+// 离开房间请求
+message LeaveRoomRequest {
+  string user_id = 1;
+  string room_id = 2;
+}
+
+// 离开房间响应
+message LeaveRoomResponse {
+  ResponseStatus status = 1;
+}
+
+// 获取房间信息请求
+message GetRoomInfoRequest {
+  string room_id = 1;
+  string user_id = 2;
+}
+
+// 获取房间信息响应
+message GetRoomInfoResponse {
+  ResponseStatus status = 1;
+  RoomInfo room_info = 2;
+  repeated RoomUser users = 3;
+}
+
+// 房间信息
+message RoomInfo {
+  string room_id = 1;
+  string name = 2;
+  string description = 3;
+  RoomConfig config = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp last_active = 6;
+  int64 message_count = 7;
+  int32 user_count = 8;
+}
+
+// 房间配置
+message RoomConfig {
+  int32 max_users = 1;
+  bool persistent = 2;
+  int64 message_ttl_seconds = 3;
+  int64 idle_timeout_seconds = 4;
+  bool allow_audio = 5;
+  bool allow_rich_text = 6;
+  bool auto_transcribe = 7;
+}
+
+// 房间用户
+message RoomUser {
+  string user_id = 1;
+  string nickname = 2;
+  UserRole role = 3;
+  bool muted = 4;
+  google.protobuf.Timestamp joined_at = 5;
+}
+
+// 用户角色枚举
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_USER = 1;
+  USER_ROLE_MODERATOR = 2;
+  USER_ROLE_ADMIN = 3;
+}
+
+// 语音转写请求
+message TranscriptRequest {
+  string audio_id = 1;
+  string user_id = 2;
+}
+
+// 语音转写响应
+message TranscriptResponse {
+  ResponseStatus status = 1;
+  Transcription transcription = 2;
+}
+
+// 转写结果
+message Transcription {
+  string audio_id = 1;
+  string text = 2;
+  double confidence = 3;
+  TranscriptStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// 转写状态枚举
+enum TranscriptStatus {
+  TRANSCRIPT_STATUS_UNSPECIFIED = 0;
+  TRANSCRIPT_STATUS_PENDING = 1;
+  TRANSCRIPT_STATUS_PROCESSING = 2;
+  TRANSCRIPT_STATUS_COMPLETED = 3;
+  TRANSCRIPT_STATUS_FAILED = 4;
+}
+
+// 音频上传请求
+message UploadAudioRequest {
+  oneof data {
+    AudioMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+// 音频元数据
+message AudioMetadata {
+  string user_id = 1;
+  string room_id = 2;
+  string format = 3;
+  int64 size = 4;
+  double duration = 5;
+}
+
+// 音频上传响应
+message UploadAudioResponse {
+  ResponseStatus status = 1;
+  string audio_id = 2;
+  string audio_url = 3;
+}
+
+// 健康检查请求
+message HealthCheckRequest {
+  string service = 1;
+}
+
+// 健康检查响应
+message HealthCheckResponse {
+  HealthStatus status = 1;
+  string message = 2;
+}
+
+// 健康状态枚举
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_SERVING = 1;
+  HEALTH_STATUS_NOT_SERVING = 2;
+  HEALTH_STATUS_SERVICE_UNKNOWN = 3;
+}
+
+// 响应状态
+message ResponseStatus {
+  int32 code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+// 文本消息内容
+message TextContent {
+  string text = 1;
+}
+
+// 音频消息内容
+message AudioContent {
+  string audio_id = 1;
+  string audio_url = 2;
+  double duration = 3;
+  string format = 4;
+  int64 size = 5;
+  string transcription = 6;
+}
+
+// 富文本消息内容
+message RichTextContent {
+  string content_type = 1; // markdown, html
+  string raw_content = 2;
+  string html_content = 3;
+}
+
+// 系统消息内容
+message SystemContent {
+  string event_type = 1; // user_joined, user_left, room_created, etc.
+  map<string, string> event_data = 2;
+}
+
+// ACK消息内容
+message AckContent {
+  string original_message_id = 1;
+  bool success = 2;
+  string error_message = 3;
+} 
