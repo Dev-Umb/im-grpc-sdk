@@ -16,7 +16,7 @@
 ## 安装
 
 ```bash
-go get github.com/game-im/im-grpc-sdk
+go get github.com/Dev-Umb/im-grpc-sdk
 ```
 
 ## 快速开始
