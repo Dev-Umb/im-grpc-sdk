@@ -1,4 +1,4 @@
-module github.com/Dev-Umb/im-grpc-sdkim-grpc-sdk
+module github.com/Dev-Umb/im-grpc-sdk
 
 go 1.21
 

@@ -207,11 +207,11 @@ make examples
 ### 4. 集成到项目
 
 ```go
-import (
-    "github.com/game-im/im-grpc-sdk/client"
-    "github.com/game-im/im-grpc-sdk/discovery"
-    imv1 "github.com/game-im/im-grpc-sdk/proto/im/v1"
-)
+ import (
+     "github.com/Dev-Umb/im-grpc-sdk/client"
+     "github.com/Dev-Umb/im-grpc-sdk/discovery"
+     imv1 "github.com/Dev-Umb/im-grpc-sdk/proto/im/v1"
+ )
 ```
 
 ## 依赖关系

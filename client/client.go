@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/game-im/im-grpc-sdk/discovery"
-	imv1 "github.com/game-im/im-grpc-sdk/proto/im/v1"
+	"github.com/Dev-Umb/im-grpc-sdk/discovery"
+	imv1 "github.com/Dev-Umb/im-grpc-sdk/proto/im/v1"
 )
 
 // Config 客户端配置
