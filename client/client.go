@@ -61,7 +61,7 @@ type Client struct {
 	config *Config
 	conn   *grpc.ClientConn
 	client imv1.IMServiceClient
-	stream imv1.IMService_StreamMessagesClient
+	stream grpc.BidiStreamingClient[imv1.MessageRequest, imv1.MessageResponse]
 
 	// 状态管理
 	connected bool
@@ -315,10 +315,24 @@ func (c *Client) IsConnected() bool {
 	return c.connected
 }
 
+// SetServices 设置服务列表（用于直连模式）
+func (c *Client) SetServices(services []*discovery.ServiceInfo) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.services = services
+	if c.config.LoadBalancer != nil {
+		c.config.LoadBalancer.Update(services)
+	}
+}
+
 // discoverServices 发现服务
 func (c *Client) discoverServices() error {
 	if c.config.Discovery == nil {
-		return fmt.Errorf("未配置服务发现")
+		// 如果没有配置服务发现，检查是否已有服务列表
+		if len(c.services) == 0 {
+			return fmt.Errorf("未配置服务发现且没有可用服务")
+		}
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(c.ctx, c.config.ConnectTimeout)
@@ -341,6 +355,10 @@ func (c *Client) discoverServices() error {
 
 // establishConnection 建立gRPC连接
 func (c *Client) establishConnection() error {
+	if len(c.services) == 0 {
+		return fmt.Errorf("没有可用的服务")
+	}
+
 	service, err := c.config.LoadBalancer.Select(c.services)
 	if err != nil {
 		return err

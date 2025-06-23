@@ -69,6 +69,9 @@ func main() {
 		log.Fatalf("创建客户端失败: %v", err)
 	}
 
+	// 设置服务列表（直连模式）
+	client.SetServices(services)
+
 	// 连接到服务器
 	log.Println("🔗 正在连接服务器...")
 	if err := client.Connect(); err != nil {
