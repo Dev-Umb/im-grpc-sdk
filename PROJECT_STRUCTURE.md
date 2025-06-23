@@ -20,7 +20,8 @@ im_grpc_sdk/
 │       └── message_grpc.pb.go    # gRPC服务代码（需要生成）
 ├── 📁 examples/                  # 使用示例
 │   ├── simple_client.go          # 基本使用示例（有依赖问题）
-│   └── direct_client.go          # 直连模式示例
+│   ├── direct_client.go          # 直连模式示例
+│   └── nacos_integration.go      # Nacos集成示例
 ├── 📁 scripts/                   # 构建和工具脚本
 │   ├── generate_proto.sh         # Linux/Mac proto生成脚本
 │   └── generate_proto.bat        # Windows proto生成脚本
@@ -50,15 +51,19 @@ im_grpc_sdk/
 ```go
 type Client struct {
     config     *Config                           // 客户端配置
-    conn       *grpc.ClientConn                  // gRPC连接
-    client     imv1.IMServiceClient              // gRPC客户端
+    conn       *grpc.ClientConn                  // gRPC连接（标准模式）
+    client     imv1.IMServiceClient              // gRPC客户端（可注入）
     stream     imv1.IMService_StreamMessagesClient // 双向流
     // ... 其他字段
 }
 ```
 
+**创建方法**:
+- `NewClient(config)` - 标准模式：SDK自管理连接
+- `NewClientWithGRPC(grpcClient, userID)` - Nacos集成：注入gRPC客户端
+- `NewClientWithGRPCAndConfig(grpcClient, config)` - Nacos集成：注入客户端+自定义配置
+
 **关键方法**:
-- `NewClient()` - 创建客户端
 - `Connect()` - 连接服务器
 - `SendTextMessage()` - 发送文本消息
 - `JoinRoom()` - 加入房间
@@ -155,6 +160,18 @@ make proto
 - 无外部依赖
 - 适合快速测试
 - 生产环境可用
+
+#### 4.3 Nacos集成示例 (`nacos_integration.go`)
+
+**功能**:
+- 展示如何与Nacos服务发现集成
+- 使用已有gRPC客户端
+- 简化的配置和使用方式
+
+**特点**:
+- 适合已有Nacos基础设施的项目
+- 无需额外的服务发现配置
+- 利用Nacos的负载均衡和健康检查
 
 ### 5. Scripts 模块 (`scripts/`)
 

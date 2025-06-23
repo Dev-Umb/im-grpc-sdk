@@ -34,7 +34,11 @@ chmod +x scripts/generate_proto.sh
 scripts\generate_proto.bat
 ```
 
-### 2. 基本使用
+### 2. 使用方式
+
+SDK 支持两种使用方式：
+
+#### 方式1: 基本使用（SDK自管理连接）
 
 ```go
 package main
@@ -95,6 +99,93 @@ func main() {
 }
 ```
 
+#### 方式2: 使用已有gRPC客户端（推荐用于Nacos集成）
+
+如果您已经有 gRPC 客户端（比如通过 Nacos 服务发现获取的），可以直接注入使用：
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    "github.com/Dev-Umb/im-grpc-sdk/client"
+    imv1 "github.com/Dev-Umb/im-grpc-sdk/proto/im/v1"
+    // "github.com/Dev-Umb/go-pkg/nacos_sdk" // 您的Nacos SDK
+)
+
+func newImServiceClient(conn interface{}) imv1.IMServiceClient {
+    // 您的gRPC客户端创建逻辑
+    return imv1.NewIMServiceClient(conn.(*grpc.ClientConn))
+}
+
+func main() {
+    // 使用Nacos获取gRPC客户端
+    grpcClient, err := nacos_sdk.GetGRPCClient(
+        "im-service",           // 服务名
+        "DEFAULT_GROUP",        // Nacos组
+        newImServiceClient,     // 客户端创建函数
+    )
+    if err != nil {
+        log.Fatalf("获取gRPC客户端失败: %v", err)
+    }
+    
+    // 方式2.1: 简单创建（推荐）
+    imClient, err := client.NewClientWithGRPC(grpcClient, "user123")
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // 方式2.2: 使用自定义配置
+    /*
+    config := &client.Config{
+        UserID:            "user123",
+        DefaultRoomID:     "room456",
+        RequestTimeout:    60 * time.Second,
+        HeartbeatInterval: 45 * time.Second,
+        OnMessage: func(msg *imv1.MessageResponse) {
+            log.Printf("收到消息: %s", string(msg.Content))
+        },
+        OnConnect: func() {
+            log.Println("连接成功")
+        },
+        OnDisconnect: func(err error) {
+            log.Printf("连接断开: %v", err)
+        },
+    }
+    
+    imClient, err := client.NewClientWithGRPCAndConfig(grpcClient, config)
+    if err != nil {
+        log.Fatal(err)
+    }
+    */
+    
+    // 连接（不会创建新的gRPC连接，直接使用注入的客户端）
+    if err := imClient.Connect(); err != nil {
+        log.Fatal(err)
+    }
+    defer imClient.Disconnect()
+    
+    // 加入房间
+    _, err = imClient.JoinRoom("room456", map[string]string{
+        "source": "nacos_integration",
+    })
+    if err != nil {
+        log.Printf("加入房间失败: %v", err)
+    }
+    
+    // 发送消息
+    err = imClient.SendTextMessage("room456", "Hello from Nacos!")
+    if err != nil {
+        log.Printf("发送消息失败: %v", err)
+    }
+    
+    // 保持连接
+    time.Sleep(30 * time.Second)
+}
+```
+
 ### 3. 无服务发现模式
 
 如果不使用服务发现，可以直接连接到固定地址：
@@ -150,6 +241,19 @@ type Config struct {
     OnDisconnect    func(error)                 // 连接断开回调
     OnError         func(error)                 // 错误回调
 }
+```
+
+### 客户端创建方法
+
+```go
+// 标准方式：创建客户端（SDK自管理连接）
+func NewClient(config *Config) (*Client, error)
+
+// Nacos集成：使用已有gRPC客户端创建（简单版本）
+func NewClientWithGRPC(grpcClient imv1.IMServiceClient, userID string) (*Client, error)
+
+// Nacos集成：使用已有gRPC客户端和自定义配置创建
+func NewClientWithGRPCAndConfig(grpcClient imv1.IMServiceClient, config *Config) (*Client, error)
 ```
 
 ### 主要方法

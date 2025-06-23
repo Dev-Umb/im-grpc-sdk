@@ -23,7 +23,13 @@ make proto
 ./scripts/generate_proto.sh
 ```
 
-### 3. 最简单的使用示例
+### 3. 使用方式选择
+
+IM gRPC SDK 支持两种主要的使用方式：
+
+#### 方式1: 标准模式（SDK自管理连接）
+
+适用于需要 SDK 自己管理 gRPC 连接和服务发现的场景：
 
 ```go
 package main
@@ -70,9 +76,77 @@ func main() {
 }
 ```
 
+#### 方式2: Nacos集成模式（使用已有gRPC客户端）
+
+**推荐用于已有Nacos服务发现的项目**，可以直接注入通过Nacos获取的gRPC客户端：
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+    
+    "github.com/Dev-Umb/im-grpc-sdk/client"
+    imv1 "github.com/Dev-Umb/im-grpc-sdk/proto/im/v1"
+    // "github.com/Dev-Umb/go-pkg/nacos_sdk" // 您的Nacos SDK
+)
+
+func newImServiceClient(conn interface{}) imv1.IMServiceClient {
+    // 您的gRPC客户端创建逻辑
+    return imv1.NewIMServiceClient(conn.(*grpc.ClientConn))
+}
+
+func main() {
+    // 使用Nacos获取gRPC客户端
+    grpcClient, err := nacos_sdk.GetGRPCClient(
+        "im-service",           // 服务名
+        "DEFAULT_GROUP",        // Nacos组
+        newImServiceClient,     // 客户端创建函数
+    )
+    if err != nil {
+        log.Fatalf("获取gRPC客户端失败: %v", err)
+    }
+    
+    // 简单创建IM客户端（推荐）
+    imClient, err := client.NewClientWithGRPC(grpcClient, "user001")
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // 连接（直接使用注入的gRPC客户端，无需额外连接管理）
+    if err := imClient.Connect(); err != nil {
+        log.Fatal(err)
+    }
+    defer imClient.Disconnect()
+    
+    // 发送消息
+    imClient.SendTextMessage("room001", "Hello from Nacos!")
+    
+    // 保持连接
+    time.Sleep(10 * time.Second)
+}
+```
+
+#### Nacos集成的优势
+
+1. **无缝集成**: 直接使用您现有的Nacos服务发现基础设施
+2. **统一管理**: gRPC连接由Nacos SDK统一管理，包括负载均衡、健康检查等
+3. **简化配置**: 无需额外配置服务发现和负载均衡
+4. **高可用**: 利用Nacos的服务发现和故障转移机制
+5. **性能优化**: 复用已有的连接池和配置
+
 ## 详细配置
 
-### 客户端配置选项
+### 客户端创建方法对比
+
+| 方法 | 适用场景 | 连接管理 | 服务发现 |
+|------|----------|----------|----------|
+| `NewClient(config)` | 标准模式 | SDK管理 | 支持多种 |
+| `NewClientWithGRPC(grpcClient, userID)` | Nacos集成 | 外部管理 | 由Nacos处理 |
+| `NewClientWithGRPCAndConfig(grpcClient, config)` | Nacos集成+自定义 | 外部管理 | 由Nacos处理 |
+
+### 标准模式配置选项
 
 ```go
 config := &client.Config{
@@ -100,6 +174,57 @@ config := &client.Config{
     OnDisconnect: disconnectHandler,  // 连接断开
     OnError:      errorHandler,       // 错误处理
 }
+```
+
+### Nacos集成模式配置
+
+#### 简单配置（推荐）
+
+```go
+// 获取Nacos gRPC客户端
+grpcClient, err := nacos_sdk.GetGRPCClient(
+    "im-service",      // 服务名
+    "DEFAULT_GROUP",   // Nacos组
+    newImServiceClient,
+)
+
+// 直接创建IM客户端
+imClient, err := client.NewClientWithGRPC(grpcClient, "user123")
+```
+
+#### 高级配置
+
+```go
+// 自定义配置
+config := &client.Config{
+    UserID:            "user123",
+    DefaultRoomID:     "default_room",
+    RequestTimeout:    60 * time.Second,    // 请求超时
+    HeartbeatInterval: 45 * time.Second,    // 心跳间隔
+    
+    // 注意：以下配置在Nacos模式下不生效
+    // ConnectTimeout: 不适用（连接由Nacos管理）
+    // MaxRetries:     不适用（重连由Nacos管理）
+    // Discovery:      不适用（使用Nacos服务发现）
+    // LoadBalancer:   不适用（使用Nacos负载均衡）
+    
+    // 回调函数仍然有效
+    OnMessage: func(msg *imv1.MessageResponse) {
+        log.Printf("收到消息: %s", string(msg.Content))
+    },
+    OnConnect: func() {
+        log.Println("IM连接成功")
+    },
+    OnDisconnect: func(err error) {
+        log.Printf("IM连接断开: %v", err)
+    },
+    OnError: func(err error) {
+        log.Printf("IM错误: %v", err)
+    },
+}
+
+// 使用自定义配置创建客户端
+imClient, err := client.NewClientWithGRPCAndConfig(grpcClient, config)
 ```
 
 ## 服务发现配置

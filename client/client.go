@@ -103,6 +103,69 @@ func NewClient(config *Config) (*Client, error) {
 	return client, nil
 }
 
+// NewClientWithGRPC 使用已有的gRPC客户端创建IM客户端
+func NewClientWithGRPC(grpcClient imv1.IMServiceClient, userID string) (*Client, error) {
+	if grpcClient == nil {
+		return nil, fmt.Errorf("gRPC客户端不能为空")
+	}
+
+	if userID == "" {
+		return nil, fmt.Errorf("用户ID不能为空")
+	}
+
+	config := &Config{
+		UserID:            userID,
+		ConnectTimeout:    10 * time.Second,
+		RequestTimeout:    30 * time.Second,
+		HeartbeatInterval: 30 * time.Second,
+		MaxRetries:        3,
+		RetryInterval:     5 * time.Second,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	client := &Client{
+		config:      config,
+		client:      grpcClient, // 直接使用传入的gRPC客户端
+		connected:   false,
+		ctx:         ctx,
+		cancel:      cancel,
+		messageCh:   make(chan *imv1.MessageRequest, 100),
+		reconnectCh: make(chan struct{}, 1),
+	}
+
+	return client, nil
+}
+
+// NewClientWithGRPCAndConfig 使用已有的gRPC客户端和自定义配置创建IM客户端
+func NewClientWithGRPCAndConfig(grpcClient imv1.IMServiceClient, config *Config) (*Client, error) {
+	if grpcClient == nil {
+		return nil, fmt.Errorf("gRPC客户端不能为空")
+	}
+
+	if config == nil {
+		return nil, fmt.Errorf("配置不能为空")
+	}
+
+	if config.UserID == "" {
+		return nil, fmt.Errorf("用户ID不能为空")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	client := &Client{
+		config:      config,
+		client:      grpcClient, // 直接使用传入的gRPC客户端
+		connected:   false,
+		ctx:         ctx,
+		cancel:      cancel,
+		messageCh:   make(chan *imv1.MessageRequest, 100),
+		reconnectCh: make(chan struct{}, 1),
+	}
+
+	return client, nil
+}
+
 // Connect 连接到IM服务
 func (c *Client) Connect() error {
 	c.mu.Lock()
@@ -112,19 +175,28 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("客户端已连接")
 	}
 
-	// 发现服务
-	if err := c.discoverServices(); err != nil {
-		return fmt.Errorf("服务发现失败: %v", err)
-	}
+	// 如果已经有gRPC客户端（通过NewClientWithGRPC创建），跳过连接建立
+	if c.client != nil {
+		// 直接创建流连接
+		if err := c.createStream(); err != nil {
+			return fmt.Errorf("创建流连接失败: %v", err)
+		}
+	} else {
+		// 原有的连接建立流程
+		// 发现服务
+		if err := c.discoverServices(); err != nil {
+			return fmt.Errorf("服务发现失败: %v", err)
+		}
 
-	// 建立连接
-	if err := c.establishConnection(); err != nil {
-		return fmt.Errorf("建立连接失败: %v", err)
-	}
+		// 建立连接
+		if err := c.establishConnection(); err != nil {
+			return fmt.Errorf("建立连接失败: %v", err)
+		}
 
-	// 创建流连接
-	if err := c.createStream(); err != nil {
-		return fmt.Errorf("创建流连接失败: %v", err)
+		// 创建流连接
+		if err := c.createStream(); err != nil {
+			return fmt.Errorf("创建流连接失败: %v", err)
+		}
 	}
 
 	c.connected = true
@@ -132,9 +204,13 @@ func (c *Client) Connect() error {
 	// 启动后台goroutines
 	go c.handleMessages()
 	go c.handleHeartbeat()
-	go c.handleReconnect()
 
-	// 监听服务变化
+	// 只有在使用自己管理的连接时才启动重连逻辑
+	if c.conn != nil {
+		go c.handleReconnect()
+	}
+
+	// 监听服务变化（只在有服务发现时）
 	if c.config.Discovery != nil {
 		go c.watchServices()
 	}
@@ -163,6 +239,7 @@ func (c *Client) Disconnect() error {
 		c.stream.CloseSend()
 	}
 
+	// 只关闭自己管理的连接，不关闭注入的gRPC客户端
 	if c.conn != nil {
 		c.conn.Close()
 	}
