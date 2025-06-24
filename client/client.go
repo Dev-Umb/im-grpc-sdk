@@ -523,7 +523,9 @@ func (c *Client) receiveMessages() {
 				}
 				return
 			}
-
+			if msg.Type == imv1.MessageType_MESSAGE_TYPE_HEARTBEAT {
+				continue
+			}
 			// 处理接收到的消息
 			if c.config.OnMessage != nil {
 				c.config.OnMessage(msg)

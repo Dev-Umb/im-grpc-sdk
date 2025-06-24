@@ -26,8 +26,8 @@ func main() {
 		{
 			ID:      "im-service-direct",
 			Name:    "im-service",
-			Address: "localhost", // 修改为实际的服务器地址
-			Port:    8083,        // 修改为实际的gRPC端口
+			Address: "10.15.101.111", // 修改为实际的服务器地址
+			Port:    30014,           // 修改为实际的gRPC端口
 			Health:  "healthy",
 		},
 	}
