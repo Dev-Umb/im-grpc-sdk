@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Dev-Umb/im-grpc-sdk/discovery"
@@ -462,7 +463,15 @@ func (c *Client) establishConnection() error {
 
 // createStream 创建双向流
 func (c *Client) createStream() error {
-	stream, err := c.client.StreamMessages(c.ctx)
+	// 创建带有用户信息的 metadata context
+	ctx := c.ctx
+	if c.config.UserID != "" && c.config.DefaultRoomID != "" {
+		ctx = metadata.AppendToOutgoingContext(c.ctx,
+			"user-id", c.config.UserID,
+			"room-id", c.config.DefaultRoomID)
+	}
+
+	stream, err := c.client.StreamMessages(ctx)
 	if err != nil {
 		return fmt.Errorf("创建消息流失败: %v", err)
 	}
@@ -601,10 +610,18 @@ func (c *Client) handleReconnect() {
 
 // reconnect 重连逻辑
 func (c *Client) reconnect() error {
-	// 关闭旧连接
+	// 关闭旧流连接
 	if c.stream != nil {
 		c.stream.CloseSend()
 	}
+
+	// 如果使用外部 gRPC 客户端（通过 NewClientWithGRPC 创建），跳过连接重建
+	if c.conn == nil {
+		// 直接重新创建流
+		return c.createStream()
+	}
+
+	// 原有的重连逻辑（用于通过服务发现创建的客户端）
 	if c.conn != nil {
 		c.conn.Close()
 	}

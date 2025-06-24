@@ -479,4 +479,52 @@ MIT License
 
 ## 支持
 
-如有问题，请提交 Issue 或联系维护者。 
+如有问题，请提交 Issue 或联系维护者。
+
+## 新功能：gRPC Metadata 支持
+
+### 自动用户信息传递
+
+从 v1.2.0 开始，SDK 支持通过 gRPC metadata 自动传递用户信息，无需在连接后发送初始消息。
+
+#### 优势
+
+1. **简化连接流程**：不需要发送初始连接消息
+2. **更快的连接建立**：直接通过 metadata 传递用户信息
+3. **向后兼容**：仍支持原有的初始消息方式
+4. **更符合 gRPC 最佳实践**：使用 metadata 传递元信息
+
+#### 使用方法
+
+```go
+// 创建 gRPC 客户端
+grpcClient := imv1.NewIMServiceClient(conn)
+
+// 配置 IM 客户端
+config := &client.Config{
+    UserID:        "user123",
+    DefaultRoomID: "room456",
+    // ... 其他配置
+}
+
+// 创建 IM 客户端（自动使用 metadata 传递用户信息）
+imClient, err := client.NewClientWithGRPCAndConfig(grpcClient, config)
+if err != nil {
+    log.Fatalf("创建IM客户端失败: %v", err)
+}
+
+// 连接到服务器（会自动通过 metadata 传递 userID 和 roomID）
+err = imClient.Connect()
+if err != nil {
+    log.Fatalf("连接失败: %v", err)
+}
+
+// 现在可以直接发送消息，无需发送初始连接消息
+err = imClient.SendTextMessage("room456", "Hello!")
+```
+
+#### 技术实现
+
+- 客户端在创建流连接时自动添加 `user-id` 和 `room-id` metadata
+- 服务端优先从 metadata 读取用户信息
+- 如果 metadata 中没有用户信息，自动回退到原有的初始消息方式

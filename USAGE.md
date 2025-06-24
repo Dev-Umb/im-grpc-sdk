@@ -660,6 +660,94 @@ config.OnError = func(err error) {
 }
 ```
 
+## 高级功能
+
+### gRPC Metadata 自动传递用户信息
+
+从版本 v1.2.0 开始，SDK 支持通过 gRPC metadata 自动传递用户信息，这样可以避免在连接建立后发送初始消息的步骤。
+
+#### 自动 Metadata 模式
+
+当使用 `NewClientWithGRPCAndConfig` 创建客户端时，SDK 会自动在 gRPC metadata 中传递用户信息：
+
+```go
+func CreateImClient(ctx context.Context, userID string, roomId string, onMessage func(msg *imv1.MessageResponse, err error)) (*client.Client, error) {
+    // 创建 gRPC 客户端
+    grpcClient, err := nacos_sdk.GetGRPCClient(
+        config.SubImServerName, config.NacosGroup, newImServiceClient)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 配置 IM 客户端
+    imConfig := &client.Config{
+        UserID:            userID,        // 会自动通过 metadata 传递
+        DefaultRoomID:     roomId,        // 会自动通过 metadata 传递
+        RequestTimeout:    60 * time.Second,
+        HeartbeatInterval: 45 * time.Second,
+        OnMessage: func(msg *imv1.MessageResponse) {
+            logger.Infof(ctx, "📨 收到消息: [%s] %s: %s",
+                msg.RoomId, msg.FromUserId, string(msg.Content))
+            onMessage(msg, nil)
+        },
+        OnConnect: func() {
+            logger.Infof(ctx, "✅ IM客户端连接成功")
+        },
+        OnDisconnect: func(err error) {
+            logger.Infof(ctx, "❌ IM客户端连接断开: %v", err)
+            onMessage(nil, errors.New(fmt.Sprintf("❌ IM客户端连接断开: %v", err)))
+        },
+        OnError: func(err error) {
+            logger.Infof(ctx, "❌ IM客户端连接断开: %v", err)
+            onMessage(nil, errors.New(fmt.Sprintf("❌ IM客户端连接断开: %v", err)))
+        },
+    }
+
+    // 创建客户端（自动使用 metadata 传递用户信息）
+    imClient, err := client.NewClientWithGRPCAndConfig(grpcClient, imConfig)
+    if err != nil {
+        log.Fatalf("创建IM客户端失败: %v", err)
+        return nil, err
+    }
+    
+    // 连接到服务器
+    err = imClient.Connect()
+    if err != nil {
+        logger.Errorf(ctx, "[%s] <JoinRoom> Connect <Err>: %v", userID, err)
+        return nil, err
+    }
+    
+    return imClient, nil
+}
+```
+
+#### 优势
+
+1. **无需初始消息**：连接建立后无需发送包含 userID 和 roomID 的初始消息
+2. **更快连接**：减少了一次消息往返，连接建立更快
+3. **自动房间加入**：服务端接收到连接后自动将用户加入指定房间
+4. **向后兼容**：如果 metadata 中没有用户信息，服务端会自动回退到原有方式
+
+#### 工作原理
+
+1. 客户端调用 `Connect()` 时，SDK 自动在 gRPC context 中添加 metadata：
+   ```
+   user-id: "your-user-id"
+   room-id: "your-room-id"
+   ```
+
+2. 服务端接收到流连接时，优先从 metadata 读取用户信息
+
+3. 如果成功获取用户信息，直接创建连接并加入房间
+
+4. 如果 metadata 中没有用户信息，回退到等待第一个消息的方式
+
+#### 注意事项
+
+- 确保在创建 `Config` 时设置了 `UserID` 和 `DefaultRoomID`
+- 使用 `NewClientWithGRPCAndConfig` 方法创建客户端
+- 此功能需要服务端版本 >= v1.2.0
+
 ## 总结
 
 IM gRPC SDK 提供了完整的即时通讯功能，支持多种部署模式和配置选项。通过合理配置和使用最佳实践，可以构建稳定、高性能的IM应用。
